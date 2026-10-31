@@ -74,7 +74,7 @@ Details and effort estimates: [ROADMAP.md](ROADMAP.md).
   - [x] On the 2-core server: first request 7.2 s (one-time voice download), then ~2.4 s for a 10 s sentence;
         container 235 MB of its 512 MB limit; image 612 MB
   - [ ] Verify playback on phones
-- [x] 10. Proactive check-ins
+- [x] 10. Proactive check-ins — **removed 2026-10-31** (noise; open loops are asked in chat now, scheduler loop lives in app/scheduler.py)
   - [x] Web Push: VAPID keys generated on first start into the data volume; `pywebpush` on the server
   - [x] "Ozývej se sám" toggle in the paměť panel → permission → subscription per user; test notification; dead
         subscriptions (404/410) pruned; network errors never kill the scheduler

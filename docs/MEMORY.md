@@ -15,7 +15,7 @@ brief are a settings toggle; a proper memory UI is part of this.
 ```
  DAY (fast, cheap, aggressive)          NIGHT – DREAM (slow, smart, once per user)        MORNING
  every exchange → Flash-Lite            1 sorting   merge, dedupe, contradictions,         core profile (always in prompt)
- writes EVERYTHING to the               2 linking   patterns → inferences                 open loops → check-ins
+ writes EVERYTHING to the               2 linking   patterns → inferences                 open loops → asked in chat
  episodic log (raw observations)  ───▶  3 forgetting decay, expire, archive         ───▶  dream → morning brief (toggle)
                                         4 REM       an actual dream in his voice           changelog with undo
                                         5 waking    core profile, open loops, questions
@@ -52,7 +52,7 @@ Model: strongest available Flash with high thinking (`gemini-3.8-flash`); Pro is
    health/goals never auto-decay, pinned never. Nothing is hard-deleted by the dream: → `archived`.
 4. **REM** — a short dream in his voice mixing the day with the books' world (RAG over the fully embedded books).
 5. **Waking** — rewrite core profile; 0–3 **open loops** ("jak dopadl rozhovor s Niky?") with suggested timing →
-   feed check-ins; **questions** for unresolved contradictions ("50 nebo 45 tisíc?") → asked naturally next day;
+   asked in conversation when due (check-ins were removed 2026-10-31); **questions** for unresolved contradictions ("50 nebo 45 tisíc?") → asked naturally next day;
    **changelog** of every op.
 - Monthly (1st): chronicle entry. Weekly: style notes from 👍/👎 ("nemá rád dlouhé odpovědi") → per-user persona notes.
 
@@ -104,5 +104,17 @@ Capture ≈ 1 Flash-Lite call per exchange; dream 2–4 calls/user/night on 3.8-
 ## Rollout
 1. Episodic capture (every exchange) + relevant-facts retrieval + `remember`/`forget` tools + migration.
 2. Dream: sorting, forgetting, core profile, changelog with undo; memory screen tabs Profil / Fakta / Noc.
-3. Linking → inferences (confirm/reject UI), open loops → check-ins, contradiction questions; tab Smyčky.
+3. Linking → inferences (confirm/reject UI), open loops → asked in chat, contradiction questions; tab Smyčky.
 4. REM dreams + dream journal + brief toggle; Kronika, Lidé, style notes.
+
+## Fixes 2026-10-31
+- **His jokes became facts.** One reply ("…na tom rozbitým USB-C… až budeš machrovat před řediteli") produced the
+  facts "rozbitý USB-C port" and "machrování před řediteli", which then drove four days of check-ins. Capture now
+  requires a verbatim `quote` of the user's words per observation; `memory._from_user` drops observations whose quote
+  isn't the user's, or that share words only with his reply.
+- **Dreams failed most nights** with 504 DEADLINE_EXCEEDED: the 60 s client timeout became the server deadline for a
+  high-thinking call. Dream calls get 300 s, and 504 falls through to the next model.
+- **Weak compression / conflicts.** The dream reviews all facts every night (with created/last_seen), resolves
+  contradictions into one current-state fact, merges per topic, forgets his unconfirmed jokes, sees open loops and
+  people (closes duplicates — it used to add a new "how's Signal Fall?" loop every night), max 3 open loops; past
+  events are archived deterministically.

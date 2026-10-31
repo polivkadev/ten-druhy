@@ -52,14 +52,19 @@ FACT_COLUMNS = {
 CATEGORIES = ["rodina", "vztahy", "práce", "zdraví", "peníze", "domov", "koníčky", "zvyky", "preference", "plány",
               "cíle", "nálady", "ten druhý", "ostatní"]
 
-CAPTURE_SYSTEM = """Jsi paměť postavy „Ten druhý“ – vnitřního hlasu uživatele. Z poslední výměny zapiš VŠECHNO, co se \
-o uživateli dá vypozorovat – i drobnosti: co dělá, co plánuje (s absolutním datem), co ho štve nebo těší, názory, \
-preference, lidé a vztahy, práce, zdraví, peníze, zvyky, nálada, vtipy, na které reagoval. Klidně i věci, které už \
-víš – zítra se to v noci roztřídí, duplicity nevadí.
-Dostaneš jen slova uživatele; odpověď Toho druhého je jen kontext (jeho vtipy a návrhy NEJSOU fakta o uživateli).
+CAPTURE_SYSTEM = """Jsi paměť postavy „Ten druhý“ – vnitřního hlasu uživatele. Z poslední výměny zapiš, co uživatel \
+SÁM ŘEKL o sobě a svém životě – i drobnosti: co dělá, co plánuje (s absolutním datem), co ho štve nebo těší, názory, \
+preference, lidé a vztahy, práce, zdraví, peníze, zvyky, nálada. Duplicity nevadí, v noci se to roztřídí.
+
+ZDROJ JE JEN UŽIVATEL. Repliky Toho druhého jsou jen kontext, abys pochopil, na co uživatel odpovídá. Ten druhý \
+vtipkuje, přehání, vymýšlí si a domýšlí – nic z jeho replik (vtipy, narážky, domněnky, „až budeš…“, přezdívky, \
+návrhy) NEZAPISUJ, pokud to uživatel sám neřekl nebo výslovně nepotvrdil. Když si nejsi jistý, nezapisuj.
+
+Ke každému postřehu dej "quote": doslovná slova uživatele (zkopíruj z jeho zprávy), ze kterých to plyne.
 Relativní data převeď na absolutní podle aktuálního data. Piš česky, krátce, ve 3. osobě („Štve ho šéf.“).
 Když výměna nic neříká (pozdrav, „jo“, test), vrať prázdný seznam.
-Vrať JSON: {"observations": [{"text": "...", "emotion": "<jedno slovo nebo prázdné>", "about": "<koho/čeho se to týká>"}]}"""
+Vrať JSON: {"observations": [{"text": "...", "quote": "...", "emotion": "<jedno slovo nebo prázdné>", \
+"about": "<koho/čeho se to týká>"}]}"""
 
 _running: set[str] = set()
 _lock = threading.Lock()
@@ -297,6 +302,11 @@ def prompt_block(user: str, message: str = "") -> str:
     if eps:
         parts.append("Čerstvé postřehy z posledních dní (ještě neutříděné):\n" + "\n".join(f"- {e['text']}" for e in eps))
     from app import dream
+    from datetime import date
+    loops = [lp for lp in dream.open_items(user, "loop") if (lp["due"] or "") <= date.today().isoformat()]
+    if loops:
+        parts.append("Na co se ho můžeš zeptat, jak to dopadlo (jen když se to hodí k hovoru, max jednu věc):\n- "
+                     + "\n- ".join(lp["text"] for lp in loops[:2]))
     qs = dream.open_items(user, "question")
     if qs:
         parts.append("Něco, co si chceš časem nenásilně ujasnit (jen když se to hodí, max jednou):\n- " + qs[0]["text"])
@@ -328,12 +338,27 @@ def capture(user: str, conversation: str):
     convo = "\n".join(f"{'Uživatel' if m['role'] == 'user' else 'Ten druhý (jen kontext)'}: {m['content']}" for m in new)
     out = json.loads(llm.generate(CAPTURE_SYSTEM, f"Aktuální datum: {now_line()}\n\n{convo}", json_mode=True,
                                   temperature=0, patient=False))
+    user_said = " ".join(m["content"] for m in said)
+    his = " ".join(m["content"] for m in new if m["role"] != "user")
     for o in out.get("observations") or []:
         text = (o.get("text") or "").strip()
-        if text:
+        if text and _from_user(text, o.get("quote") or "", user_said, his):
             _q("INSERT INTO episodes(user, conversation, text, emotion, about) VALUES (?, ?, ?, ?, ?)",
                (user, conversation, text, (o.get("emotion") or "")[:40], (o.get("about") or "")[:80]))
     _set_progress(conversation, new[-1]["id"])
+
+
+def _from_user(text: str, quote: str, user_said: str, his: str) -> bool:
+    """Drop observations the model lifted from his own reply (seen: his joke about a broken USB-C port became a
+    fact and drove days of check-ins). The quote must be the user's words, and an observation sharing no word with
+    the user but some with his reply is his."""
+    from app.textnorm import tokens
+    said = set(tokens(user_said))
+    qt = tokens(quote)
+    if not qt or sum(t in said for t in qt) < 0.6 * len(qt):
+        return False
+    tt = set(tokens(text))
+    return bool(tt & said) or not (tt & set(tokens(his)))
 
 
 def _set_progress(conversation: str, upto: int):

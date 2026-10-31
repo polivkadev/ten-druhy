@@ -28,8 +28,7 @@ TTS_STYLE = os.getenv("TTS_STYLE", "")
 PIPER_VOICE = os.getenv("PIPER_VOICE", "cs_CZ-jirka-medium")
 PIPER_LENGTH_SCALE = float(os.getenv("PIPER_LENGTH_SCALE", "0.9"))  # <1 = faster
 
-# Proactive check-ins via Web Push (scheduler thread in the app). VAPID "sub" claim must be mailto: or https URL.
-CHECKINS = os.getenv("CHECKINS", "1") == "1"
+# Web Push (reminders, rituals, watchdog). VAPID "sub" claim must be mailto: or https URL.
 PUSH_CONTACT = os.getenv("PUSH_CONTACT", "https://druhy.ppolivka.com")
 
 # Per-person tone pinned server-side, e.g. TONE_LOCK=elenka:kid,babicka:mild (Authelia usernames).

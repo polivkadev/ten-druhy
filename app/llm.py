@@ -53,7 +53,7 @@ def client() -> genai.Client:
     return _client
 
 
-RETRYABLE = (429, 500, 503)
+RETRYABLE = (429, 500, 503, 504)  # 504 = our timeout hit the server's deadline (long thinking) -> next model
 SKIP = (404,)  # model retired / not available to this key -> just try the next one
 
 
@@ -111,9 +111,10 @@ def _contents(history: list[dict]) -> list[types.Content]:
 
 
 def generate(system: str, user: str, model: str | None = None, json_mode: bool = False, temperature: float = 0.3,
-             patient: bool = True) -> str:
+             patient: bool = True, timeout_s: int | None = None) -> str:
     def cfg(thinking=None):
         return types.GenerateContentConfig(
+            http_options=types.HttpOptions(timeout=timeout_s * 1000) if timeout_s else None,
             system_instruction=system,
             temperature=temperature,
             safety_settings=SAFETY,

@@ -1,6 +1,6 @@
 """Opt-in rituals: an evening journal question and a Sunday weekly review, in his voice.
 
-Run from the scheduler loop (app/checkins.py). Each lands as a new conversation started by him (+ push if the user
+Run from the scheduler loop (app/scheduler.py). Each lands as a new conversation started by him (+ push if the user
 has it), at most once per day / week (sent log).
 
   python -m app.rituals journal|weekly|brief --user pavel   # force one now (testing)

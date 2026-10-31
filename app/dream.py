@@ -17,6 +17,9 @@ from app.prompt import MONTHS, TZ, now_line
 
 DREAM_AT = (4, 0)  # local time, after the 3:00 backup
 DECAY_DAYS = 21    # unreinforced trivia older than this gets archived
+EXPIRE_DAYS = 2    # events this many days past their date go to the archive (the chronicle)
+MAX_LOOPS = 3
+DREAM_TIMEOUT_S = 300  # high thinking over the whole memory takes minutes; 60 s ended in 504 most nights
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS dreams (id INTEGER PRIMARY KEY, user TEXT NOT NULL, ts DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -50,38 +53,46 @@ def _q(sql: str, args: tuple = ()) -> list[tuple]:
     return sessions._q(sql, args)
 
 
-SORT_SYSTEM = """Jsi spící mozek „Toho druhého“ – vnitřního hlasu uživatele. V noci třídíš jeho paměť o uživateli.
-Dostaneš: aktuální datum, jádro profilu, AKTIVNÍ FAKTA (s id a atributy), NOVÉ POSTŘEHY ze dne (s id), odmítnuté
-odhady (ty už nikdy neodvozuj) a 👍/👎 hodnocení jeho odpovědí.
+SORT_SYSTEM = """Jsi spící mozek „Toho druhého“ – vnitřního hlasu uživatele. V noci uklízíš jeho paměť o uživateli.
+Dostaneš: aktuální datum, jádro profilu, VŠECHNA AKTIVNÍ FAKTA (s id, kdy vznikla a kdy byla naposled potvrzena),
+NOVÉ POSTŘEHY ze dne (s id), OTEVŘENÉ SMYČKY a OTÁZKY (s id), LIDI, odmítnuté odhady (ty už nikdy neodvozuj)
+a 👍/👎 hodnocení jeho odpovědí.
 
-Udělej (vrať jako JSON operace):
-1. TŘÍDĚNÍ – z postřehů udělej fakta. Když fakt už existuje, NEPŘIDÁVEJ nový – dej "update" s "reinforce": true
-   (posílí důkaz). Když postřeh fakt mění (nová hodnota, událost proběhla), uprav text. Duplicitní fakta slouč ("merge").
-   Události/plány s datem v minulosti převeď do minulého času a dej "archive" (kronika), pokud nejsou důležité i dál.
-2. SPOJOVÁNÍ – když vidíš vzorec potvrzený víc postřehy/fakty (zvyk, nálada, souvislost), přidej fakt s kind
-   "inference" (odhad), confidence 0.3–0.6. Nic, co je v odmítnutých odhadech.
-3. ZAPOMÍNÁNÍ – "forget" jen pro nesmysly, testovací zprávy a úplné drobnosti bez hodnoty; NIKDY pinned. Raději
-   "archive" než "forget".
-4. Kategorie jedna z: {categories}. kind jedna z: fact, inference, event, preference, routine, goal, self
-   („self“ = jeho vlastní věci: přezdívky, které uživateli dal, running jokes, co slíbil).
+Cíl: malá, čistá, bezrozporná paměť. Každou noc projdi VŠECHNA fakta, ne jen nové postřehy.
+
+1. TŘÍDĚNÍ – z postřehů udělej fakta. Když fakt už existuje, NEPŘIDÁVEJ nový – dej "update" s "reinforce": true.
+   Když postřeh fakt mění (nová hodnota, událost proběhla, situace se zlepšila/zhoršila), uprav text na AKTUÁLNÍ stav.
+2. ROZPORY – najdi fakta (i mezi starými), která si odporují nebo popisují stejnou věc jinak (např. „vztah v hluboké
+   krizi“ vs. „už se tolik nehádají“). Platí novější (podle data potvrzení): slouč je ("merge") do jednoho faktu
+   s aktuálním stavem, starý stav jen krátce s datem, pokud je důležitý („od poloviny října se tolik nehádají“).
+   Když nejde poznat, co platí, nech novější a dej "questions".
+3. KOMPRESE – jedno téma = jeden fakt. Fakta o stejném projektu, člověku nebo věci slouč ("merge"). Fakt max ~25 slov,
+   konkrétní (jména, čísla, data, místa nech), bez vaty („Uživatel by chtěl…“ → „Chce…“). Důležitost drž realistickou.
+4. VÝMYSLY – Ten druhý vtipkuje a přehání. Fakt, který zní jako jeho vtip/narážka nebo domněnka a uživatel ho nikde
+   nepotvrdil, dej do "forget" s důvodem.
+5. SPOJOVÁNÍ – když vidíš vzorec potvrzený víc postřehy/fakty, přidej fakt s kind "inference" (odhad), confidence
+   0.3–0.6. Nic, co je v odmítnutých odhadech. Raději žádný odhad než slabý.
+6. ZAPOMÍNÁNÍ – "forget" pro nesmysly, testy, výmysly a drobnosti bez hodnoty; NIKDY pinned. Proběhlé události bez
+   trvalého významu "archive".
+7. Kategorie jedna z: {categories}. kind jedna z: fact, inference, event, preference, routine, goal, self.
    importance 1–5 (rodina, zdraví, cíle = 4–5; drobnosti 1–2). valid_until = YYYY-MM-DD pro plány/události.
-5. JÁDRO PROFILU – přepiš "profile": cca 150–200 slov, kdo uživatel je, co je pro něj teď důležité. Fakta, ne styl.
-6. SMYČKY – "open_loops": 0–3 věci, na které se má Ten druhý v příštích dnech zeptat (jak dopadlo X), s "due".
-   "questions": 0–2 rozpory/nejasnosti, které je dobré si nenásilně ujasnit.
-7. LIDÉ – "people": lidé z jeho života (jméno, vztah, 1–2 věty co o nich víš). Jen ti, o kterých něco víš.
-8. STYL – "style_notes": 1–3 věty, co z hodnocení vyplývá o tom, jak s ním mluvit (nebo prázdné).
+   KAŽDÝ budoucí termín (deploy ve středu v 6:00, třídní schůzky 12. 10. v 17:00) = samostatný fakt kind "event"
+   s valid_until; nedávej ho jen do smyček.
+8. JÁDRO PROFILU – přepiš "profile": max 150 slov, kdo uživatel je a jak to má TEĎ. Žádné „nedávno“ bez data,
+   žádné vtipy Toho druhého, jen ověřená fakta.
+9. SMYČKY – "close_loops": id smyček a otázek, které jsou vyřešené, zastaralé nebo se opakují. "open_loops": nové
+   věci, na které se má Ten druhý v rozhovoru zeptat (jak dopadlo X), s "due" – jen když to už není mezi otevřenými;
+   celkem otevřených smyček max 3. "questions": 0–1 nová nejasnost k nenásilnému ujasnění.
+10. LIDÉ – "people": aktuální stav lidí z jeho života (jméno, vztah, 1–2 věty). "remove_people": jména, o kterých už
+   nic nevíš nebo jsou nedůležitá.
+11. STYL – "style_notes": 1–3 věty, co z hodnocení vyplývá o tom, jak s ním mluvit (nebo prázdné).
 
-DŮLEŽITÉ:
-- Zachovej konkrétnost: raději víc malých přesných faktů než jeden obecný souhrn. Jména, čísla, data, místa nech.
-- KAŽDÝ plán / termín / událost s datem (i budoucí: deploy ve středu v 6:00, třídní schůzky 12. 10. v 17:00, sraz
-  s někým) = samostatný fakt kind "event" s valid_until. Nikdy je neslučuj do obecného faktu a nedávej je jen do smyček.
-- Slučuj jen opravdové duplicity (stejná věc jinými slovy).
 Piš česky, fakta krátce ve 3. osobě. Nevymýšlej nic, co není v podkladech.
 JSON: {{"add":[{{"text","kind","category","importance","confidence","valid_until","entities":[],"episodes":[id]}}],
 "update":[{{"id","text"?,"kind"?,"category"?,"importance"?,"confidence"?,"valid_until"?,"reinforce":bool,"episodes":[id]}}],
 "merge":[{{"into":id,"ids":[id],"text":"sloučený text"}}], "archive":[{{"id","reason"}}], "forget":[{{"id","reason"}}],
-"profile":"...", "open_loops":[{{"text","due"}}], "questions":[{{"text"}}], "people":[{{"name","relation","summary"}}],
-"style_notes":"..."}}"""
+"profile":"...", "close_loops":[id], "open_loops":[{{"text","due"}}], "questions":[{{"text"}}],
+"people":[{{"name","relation","summary"}}], "remove_people":["jméno"], "style_notes":"..."}}"""
 
 REM_SYSTEM = """Jsi „Ten druhý“ – vnitřní hlas uživatele z knih Jiřího Kulhánka – a právě se ti něco zdálo. Napiš ten
 sen: 4–6 vět, první osoba („Zdálo se mi…“), česky, surreálně a s černým humorem. Smíchej v něm, co uživatel dnes/
@@ -198,6 +209,17 @@ def _decay(user: str, dream_id: int) -> int:
     return len(rows)
 
 
+def _expire(user: str, dream_id: int) -> int:
+    """Past events the dream left active (it often does) go to the archive."""
+    rows = _q("SELECT id FROM memories WHERE user = ? AND status = 'active' AND pinned = 0 AND kind = 'event' "
+              "AND valid_until IS NOT NULL AND valid_until < date('now', ?)", (user, f"-{EXPIRE_DAYS} days"))
+    for (fid,) in rows:
+        before = _snapshot(fid)
+        memory.update_fact(fid, status="archived")
+        _log(dream_id, user, fid, "archive", before, memory.get(fid), "událost proběhla")
+    return len(rows)
+
+
 def _feedback(user: str) -> str:
     rows = _q("""SELECT f.rating, a.content, (SELECT u.content FROM messages u WHERE u.conversation = a.conversation
                  AND u.id < a.id AND u.role = 'user' ORDER BY u.id DESC LIMIT 1)
@@ -218,7 +240,7 @@ def _rem(user: str, episodes: list[dict]) -> str:
             pass
     ctx = ("Postřehy z jeho dne:\n" + "\n".join(f"- {s}" for s in seeds[-10:])
            + "\n\nÚryvky z knih (obrazy, atmosféra):\n" + "\n---\n".join(excerpts[:3]))
-    return llm.generate(REM_SYSTEM, ctx, model=config.DREAM_MODEL, temperature=1.0).strip()
+    return llm.generate(REM_SYSTEM, ctx, model=config.DREAM_MODEL, temperature=1.0, timeout_s=DREAM_TIMEOUT_S).strip()
 
 
 def _chronicle(user: str):
@@ -234,7 +256,7 @@ def _chronicle(user: str):
     if not rows and not eps:
         return
     ctx = f"Měsíc: {MONTHS[prev.month - 1]} {prev.year}\n" + "\n".join(f"- {t}" for (t,) in rows + eps)
-    text = llm.generate(CHRONICLE_SYSTEM, ctx, model=config.DREAM_MODEL).strip()
+    text = llm.generate(CHRONICLE_SYSTEM, ctx, model=config.DREAM_MODEL, timeout_s=DREAM_TIMEOUT_S).strip()
     if text:
         _q("INSERT OR REPLACE INTO chronicle(user, month, text) VALUES (?, ?, ?)", (user, key, text))
 
@@ -253,18 +275,27 @@ def dream(user: str) -> dict:
         prof = memory.profile(user)
         rejected = [t for (t,) in _q("SELECT text FROM rejected_inferences WHERE user = ?", (user,))]
         facts_txt = "\n".join(json.dumps({k: f[k] for k in ("id", "text", "kind", "category", "importance", "confidence",
-                                                               "evidence", "pinned", "valid_until", "last_seen")},
+                                                               "evidence", "pinned", "valid_until", "created", "last_seen")},
                                          ensure_ascii=False) for f in own) or "(žádná)"
         eps_txt = "\n".join(f"[{e['id']}] {e['ts']} {e['text']}" + (f" ({e['emotion']})" if e["emotion"] else "")
                             for e in episodes.values()) or "(žádné)"
+        loops_txt = "\n".join(f"[{lp['id']}] {lp['kind']}: {lp['text']}" + (f" (kdy: {lp['due']})" if lp["due"] else "")
+                              for lp in open_items(user)) or "(žádné)"
+        people_txt = "\n".join(f"- {n} ({r}): {sm}" for n, r, sm in
+                               _q("SELECT name, relation, summary FROM people WHERE user = ?", (user,))) or "(nikdo)"
         ctx = (f"Aktuální datum: {now_line()}\n\nJÁDRO PROFILU:\n{prof['text'] if prof else '(zatím žádné)'}\n\n"
                f"AKTIVNÍ FAKTA:\n{facts_txt}\n\nNOVÉ POSTŘEHY:\n{eps_txt}\n\n"
+               f"OTEVŘENÉ SMYČKY A OTÁZKY:\n{loops_txt}\n\nLIDÉ:\n{people_txt}\n\n"
                f"ODMÍTNUTÉ ODHADY:\n" + ("\n".join(f"- {t}" for t in rejected) or "(žádné)")
                + f"\n\nHODNOCENÍ ODPOVĚDÍ:\n{_feedback(user)}")
         system = SORT_SYSTEM.format(categories=", ".join(memory.CATEGORIES))
-        ops = json.loads(llm.generate(system, ctx, model=config.DREAM_MODEL, json_mode=True, temperature=0.2))
+        ops = json.loads(llm.generate(system, ctx, model=config.DREAM_MODEL, json_mode=True, temperature=0.2,
+                                      timeout_s=DREAM_TIMEOUT_S))
         stats = _apply(user, dream_id, ops, episodes)
         stats["decay"] = _decay(user, dream_id)
+        stats["expire"] = _expire(user, dream_id)
+        for lid in ops.get("close_loops") or []:
+            _q("UPDATE open_loops SET status = 'done' WHERE id = ? AND user = ? AND status = 'open'", (lid, user))
         if (ops.get("profile") or "").strip():
             memory.set_profile(user, ops["profile"])
         for lp in ops.get("open_loops") or []:
@@ -279,6 +310,8 @@ def dream(user: str) -> dict:
                 _q("INSERT INTO people(user, name, relation, summary) VALUES (?, ?, ?, ?) ON CONFLICT(user, name) DO UPDATE "
                    "SET relation = excluded.relation, summary = excluded.summary, updated = CURRENT_TIMESTAMP",
                    (user, p["name"].strip(), p.get("relation", ""), p.get("summary", "")))
+        for name in ops.get("remove_people") or []:
+            _q("DELETE FROM people WHERE user = ? AND name = ?", (user, str(name).strip()))
         if (ops.get("style_notes") or "").strip():
             _q("INSERT INTO style_notes(user, text) VALUES (?, ?) ON CONFLICT(user) DO UPDATE SET text = excluded.text, "
                "updated = CURRENT_TIMESTAMP", (user, ops["style_notes"].strip()))
@@ -287,6 +320,10 @@ def dream(user: str) -> dict:
         # Old open loops nobody followed up fade after their due date + 3 days.
         _q("UPDATE open_loops SET status = 'expired' WHERE user = ? AND status = 'open' AND due IS NOT NULL "
            "AND due < date('now', '-3 days')", (user,))
+        # Never more than MAX_LOOPS waiting: the soonest stay.
+        _q("UPDATE open_loops SET status = 'expired' WHERE user = ? AND kind = 'loop' AND status = 'open' AND id NOT IN "
+           "(SELECT id FROM open_loops WHERE user = ? AND kind = 'loop' AND status = 'open' "
+           "ORDER BY COALESCE(due, '9999'), id LIMIT ?)", (user, user, MAX_LOOPS))
         memory.embed_missing(user)
         try:
             dream_text = _rem(user, list(episodes.values()))

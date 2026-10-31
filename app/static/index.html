@@ -518,7 +518,7 @@ async function memNight(o, body) {
     const items = byDream[d.id] || [];
     const st = d.stats || {};
     const night = new Date(d.ts.replace(' ', 'T') + 'Z');
-    body.append(el('h3', { class: 'sec' }, `Noc ${night.toLocaleDateString('cs-CZ', { weekday: 'short', day: 'numeric', month: 'numeric' })}, ${night.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}` + (d.error ? ' – nepovedlo se' : ` · ${st.episodes || 0} postřehů → +${st.add || 0} ⇄${st.merge || 0} ↧${(st.archive || 0) + (st.decay || 0)} −${st.forget || 0}`)));
+    body.append(el('h3', { class: 'sec' }, `Noc ${night.toLocaleDateString('cs-CZ', { weekday: 'short', day: 'numeric', month: 'numeric' })}, ${night.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}` + (d.error ? ' – nepovedlo se' : ` · ${st.episodes || 0} postřehů → +${st.add || 0} ⇄${st.merge || 0} ↧${(st.archive || 0) + (st.decay || 0) + (st.expire || 0)} −${st.forget || 0}`)));
     if (d.error) body.append(el('p', { class: 'err' }, d.error));
     for (const c of items) body.append(changeRow(c));
   }

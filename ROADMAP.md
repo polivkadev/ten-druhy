@@ -14,7 +14,7 @@ per-model daily quotas), 2-core homelab box, identity comes from Authelia (`Remo
 | 7 | **Long-term memory** – Flash-Lite extracts durable facts per conversation into a per-user memory table, injected into the prompt; view/delete page; opt-in shared family layer | 2–4 h | ✅ done |
 | 8 | **Photos** – send a picture, he comments (Gemini multimodal) | 1–2 h | ✅ done |
 | 9 | **Better voice** – Gemini TTS (`gemini-3.8-flash-tts`) with a gravelly cynical voice; check free quota | 2–3 h | ✅ done |
-| 10 | **Proactive check-ins** – web push (needs #3) + memory (#7) + scheduler: "Tak co, přežili jsme ten deploy?" | 3–4 h | ✅ done |
+| 10 | ~~**Proactive check-ins**~~ – removed 2026-10-31: daily unprompted pushes were noise; open loops are asked in conversation instead | 3–4 h | ❌ removed |
 
 ## Phase 2 – from the brainstorm (ordered cheapest first, by request)
 
@@ -23,7 +23,7 @@ per-model daily quotas), 2-core homelab box, identity comes from Authelia (`Remo
 | 14 | **Web search** – DuckDuckGo + Open-Meteo weather (Gemini grounding isn't free) | 1 h | ✅ done |
 | 15 | **Per-person tone** – full / mild / kid setting per user (Elenka gets no swearing/violence) | 1 h | ✅ done |
 | 16 | **Reminders** – "připomeň mi zítra v 8…" → push at that time in his voice | 1–2 h | ✅ done |
-| 17 | **Calendar** – Google Calendar via each user's secret iCal URL; feeds replies, check-ins, brief | 1–2 h | ✅ done |
+| 17 | **Calendar** – Google Calendar via each user's secret iCal URL; feeds replies, brief | 1–2 h | ✅ done |
 | 18 | **OpenAI-compatible API** – `/v1/chat/completions` + `/v1/audio/speech` (Piper), token auth, for HA Assist / n8n / scripts on the `portal` network (replaces 10b) | 1–2 h | ✅ done |
 | 19 | **Journal & weekly review** – evening question, Sunday recap from memory | 1–2 h | ✅ done |
 | 21 | **Morning brief** – today's events (calendar + memory) + weather for Buštěhrad; 7:00 weekdays, 9:00 weekends | 2 h | ✅ done |
