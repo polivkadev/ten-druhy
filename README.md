@@ -26,7 +26,7 @@ Run locally: `.venv/bin/uvicorn app.main:app --reload` → http://localhost:8000
 ## Deploy (homelab, /opt/tendruhy)
 Code and data travel separately:
 
-- **Code** → GitHub Actions builds `ghcr.io/pavlikpolivka/ten-druhy` on every push to `main`
+- **Code** → GitHub Actions builds `ghcr.io/polivkadev/ten-druhy` on every push to `main`
   (`latest` + `sha-xxxxxxx`). The image contains no book data and no secrets.
 - **Data** → `data/derived/` is copyrighted-derived (`vectors.jsonl` contains full chunk text) and is
   **never committed or baked into the image**. It is copied to the server and bind-mounted read-only.
